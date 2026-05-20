@@ -1,49 +1,89 @@
+const PRODUCTS_ALL_KEY = "products:all"
+const PRODUCTS_UPDATED_AT_KEY = "products:updated_at"
+const WOO_PRODUCTS_URL =
+  "https://shop.emotiv.com/wp-json/wc/store/v1/products?per_page=40&page=1"
+
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     if (request.method === "OPTIONS") {
       return new Response(null, {
         headers: corsHeaders()
       })
     }
 
+    if (request.method !== "GET") {
+      return json({ error: "method not allowed" }, 405)
+    }
+
     const url = new URL(request.url)
     const slug = (url.searchParams.get("slug") || "").trim()
 
     if (slug) {
-      return handleSingleProduct(slug)
+      return handleSingleProduct(env, slug)
     }
 
-    return handleAllProducts()
+    return handleAllProducts(env)
+  },
+
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(syncProducts(env))
   }
 }
 
-async function handleSingleProduct(slug) {
-  const wooUrl =
-    "https://shop.emotiv.com/wp-json/wc/store/v1/products?slug=" +
-    encodeURIComponent(slug)
-
-  const res = await fetch(wooUrl)
-  const data = await res.json()
-  const product = data && data[0]
+async function handleSingleProduct(env, slug) {
+  const product = await env.PRODUCTS_KV.get(productKey(slug), "json")
+  const lastUpdated = await env.PRODUCTS_KV.get(PRODUCTS_UPDATED_AT_KEY)
 
   if (!product) {
-    return json({ error: "product not found", slug: slug }, 404)
+    return json({ error: "product not found", slug: slug, lastUpdated }, 404)
   }
 
-  return json(formatProduct(product))
+  return json({ ...product, lastUpdated })
 }
 
-async function handleAllProducts() {
-  const wooUrl =
-    "https://shop.emotiv.com/wp-json/wc/store/v1/products?per_page=40&page=1"
-
-  const res = await fetch(wooUrl)
-  const data = await res.json()
+async function handleAllProducts(env) {
+  const products = await env.PRODUCTS_KV.get(PRODUCTS_ALL_KEY, "json")
+  const lastUpdated = await env.PRODUCTS_KV.get(PRODUCTS_UPDATED_AT_KEY)
 
   return json({
-    count: Array.isArray(data) ? data.length : 0,
-    products: Array.isArray(data) ? data.map(formatProduct) : []
+    count: Array.isArray(products) ? products.length : 0,
+    lastUpdated,
+    products: Array.isArray(products) ? products : []
   })
+}
+
+async function syncProducts(env) {
+  const res = await fetch(WOO_PRODUCTS_URL, {
+    headers: {
+      accept: "application/json"
+    }
+  })
+
+  if (!res.ok) {
+    throw new Error(`WooCommerce request failed: ${res.status}`)
+  }
+
+  const data = await res.json()
+  const products = Array.isArray(data) ? data.map(formatProduct) : []
+  const lastUpdated = new Date().toISOString()
+
+  await env.PRODUCTS_KV.put(PRODUCTS_ALL_KEY, JSON.stringify(products))
+  await env.PRODUCTS_KV.put(PRODUCTS_UPDATED_AT_KEY, lastUpdated)
+
+  await Promise.all(
+    products.map((product) =>
+      env.PRODUCTS_KV.put(productKey(product.slug), JSON.stringify(product))
+    )
+  )
+
+  return {
+    count: products.length,
+    lastUpdated
+  }
+}
+
+function productKey(slug) {
+  return `product:${slug}`
 }
 
 function formatProduct(product) {
@@ -76,10 +116,8 @@ function json(data, status) {
   return new Response(JSON.stringify(data), {
     status: status || 200,
     headers: {
-      "content-type": "application/json; charset=utf-8",
-      "access-control-allow-origin": "*",
-      "access-control-allow-methods": "GET, OPTIONS",
-      "access-control-allow-headers": "Content-Type"
+      ...corsHeaders(),
+      "content-type": "application/json; charset=utf-8"
     }
   })
 }

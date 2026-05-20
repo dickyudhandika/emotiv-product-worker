@@ -1,0 +1,11 @@
+name = "emotiv-product-worker"
+main = "worker.js"
+compatibility_date = "2026-05-20"
+
+[triggers]
+crons = ["0 */6 * * *"]
+
+[[kv_namespaces]]
+binding = "PRODUCTS_KV"
+id = "YOUR_PRODUCTION_KV_NAMESPACE_ID"
+preview_id = "YOUR_PREVIEW_KV_NAMESPACE_ID"
