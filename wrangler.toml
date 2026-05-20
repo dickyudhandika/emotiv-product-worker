@@ -7,5 +7,5 @@ crons = ["0 */6 * * *"]
 
 [[kv_namespaces]]
 binding = "PRODUCTS_KV"
-id = "YOUR_PRODUCTION_KV_NAMESPACE_ID"
-preview_id = "YOUR_PREVIEW_KV_NAMESPACE_ID"
+id = "38315c95f3044ad4b71bb677d51904e1"
+preview_id = "38315c95f3044ad4b71bb677d51904e1"

@@ -18,6 +18,10 @@ export default {
     const url = new URL(request.url)
     const slug = (url.searchParams.get("slug") || "").trim()
 
+    if (url.pathname === "/sync") {
+      return handleManualSync(url, env)
+    }
+
     if (slug) {
       return handleSingleProduct(env, slug)
     }
@@ -28,6 +32,26 @@ export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(syncProducts(env))
   }
+}
+
+async function handleManualSync(url, env) {
+  if (!env.SYNC_SECRET) {
+    return json({ error: "sync secret is not configured" }, 500)
+  }
+
+  const secret = (url.searchParams.get("secret") || "").trim()
+
+  if (!secret || secret !== env.SYNC_SECRET) {
+    return json({ error: "unauthorized" }, 401)
+  }
+
+  const result = await syncProducts(env)
+
+  return json({
+    ok: true,
+    message: "products synced",
+    ...result
+  })
 }
 
 async function handleSingleProduct(env, slug) {

@@ -20,7 +20,7 @@ This makes the API faster and more stable.
 
 ## What it does
 
-This Worker has two jobs:
+This Worker has three jobs:
 
 ### 1. Serve cached product data
 
@@ -83,9 +83,9 @@ If the product does not exist:
 }
 ```
 
-### 2. Sync fresh prices in the background
+### 2. Sync fresh prices automatically
 
-The Worker also has a scheduled job.
+The Worker has a scheduled job.
 
 Every 6 hours it:
 - fetches products from WooCommerce
@@ -93,6 +93,27 @@ Every 6 hours it:
 - stores the full product list in KV
 - stores each product by slug in KV
 - stores a `lastUpdated` timestamp
+
+### 3. Sync fresh prices manually
+
+This is useful right after first deploy so you do not have to wait for cron.
+
+Endpoint:
+
+```txt
+https://your-worker-url.workers.dev/sync?secret=YOUR_SYNC_SECRET
+```
+
+Example response:
+
+```json
+{
+  "ok": true,
+  "message": "products synced",
+  "count": 40,
+  "lastUpdated": "2026-05-20T10:00:00.000Z"
+}
+```
 
 ## Files
 
@@ -109,33 +130,53 @@ emotiv-product-worker/
 
 ## Cloudflare setup
 
-### 1. Create a KV namespace
+### 1. KV namespace
 
-Create a KV namespace in Cloudflare, then copy the namespace ID.
+This repo already uses your KV namespace ID:
 
-Example binding name used by this project:
+- `38315c95f3044ad4b71bb677d51904e1`
+
+Binding name:
 
 - `PRODUCTS_KV`
 
-### 2. Update `wrangler.toml`
+### 2. Add a Worker secret
 
-Replace the placeholder KV namespace IDs with your real ones.
+You need to create a Worker secret named:
 
-### 3. Deploy
+- `SYNC_SECRET`
 
-```bash
-npm install -g wrangler
-wrangler login
-wrangler deploy
+In Cloudflare dashboard:
+- open your Worker project
+- go to **Settings**
+- go to **Variables**
+- add a **Secret** named `SYNC_SECRET`
+- set any strong value you want
+
+Example:
+
+```txt
+SYNC_SECRET = my-super-secret-sync-key
 ```
 
-### 4. Seed the KV once
+### 3. Deploy from GitHub
 
-Important: KV will be empty on first deploy.
+On your setup screen:
+- project name: `emotiv-product-worker`
+- build command: leave empty
+- deploy command: `npx wrangler deploy`
 
-You need the scheduled sync to run once, or trigger a manual sync if you add one later.
+Then press **Deploy**.
 
-Until KV is filled, the Worker will return empty results.
+### 4. Seed the KV immediately
+
+After deploy, call:
+
+```txt
+https://your-worker-url.workers.dev/sync?secret=YOUR_SYNC_SECRET
+```
+
+That will fetch products from WooCommerce and fill KV right away.
 
 ## How it works in simple words
 
@@ -144,6 +185,7 @@ Until KV is filled, the Worker will return empty results.
 - that response is fast because it does not wait for WooCommerce
 - separately, Cloudflare runs a cron job every 6 hours
 - the cron job fetches fresh prices and updates KV
+- if you need instant setup, call `/sync` once manually
 
 So the Worker acts like a fast cached API in front of WooCommerce.
 
@@ -153,4 +195,5 @@ So the Worker acts like a fast cached API in front of WooCommerce.
 - CORS is open with `access-control-allow-origin: *`
 - prices are converted from WooCommerce minor units into normal values
 - `lastUpdated` shows when the cached data was last refreshed
+- `/sync` is protected by `SYNC_SECRET`
 - this version is better for frontend use because requests are immediate and stable
