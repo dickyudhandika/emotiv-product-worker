@@ -119,8 +119,8 @@ function formatProduct(product) {
   const priceText =
     (prices.currency_prefix || "") +
     value.toLocaleString("en-US", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      minimumFractionDigits: minor,
+      maximumFractionDigits: minor
     }) +
     (prices.currency_suffix || "")
 
