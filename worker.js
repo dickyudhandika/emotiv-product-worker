@@ -116,10 +116,12 @@ function formatProduct(product) {
   const minor = Number(prices.currency_minor_unit || 2)
   const value = raw / Math.pow(10, minor)
 
+  const fractionDigits = Number.isInteger(value) ? 0 : minor
+
   const priceText =
     (prices.currency_prefix || "") +
     value.toLocaleString("en-US", {
-      minimumFractionDigits: minor,
+      minimumFractionDigits: fractionDigits,
       maximumFractionDigits: minor
     }) +
     (prices.currency_suffix || "")
