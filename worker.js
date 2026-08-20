@@ -59,10 +59,22 @@ async function handleSingleProduct(env, slug) {
   const lastUpdated = await env.PRODUCTS_KV.get(PRODUCTS_UPDATED_AT_KEY)
 
   if (!product) {
-    return json({ error: "product not found", slug: slug, lastUpdated }, 404)
+    return json({
+      slug,
+      displayText: "Data not available",
+      available: false,
+      priceText: null,
+      lastUpdated
+    })
   }
 
-  return json({ ...product, lastUpdated })
+  return json({
+    ...product,
+    slug,
+    displayText: product.priceText,
+    available: true,
+    lastUpdated
+  })
 }
 
 async function handleAllProducts(env) {
@@ -98,6 +110,14 @@ async function syncProducts(env) {
     products.map((product) =>
       env.PRODUCTS_KV.put(productKey(product.slug), JSON.stringify(product))
     )
+  )
+
+  const currentSlugs = new Set(products.map((p) => p.slug))
+  const listed = await env.PRODUCTS_KV.list({ prefix: "product:" })
+  await Promise.all(
+    listed.keys
+      .filter((k) => !currentSlugs.has(k.name.slice("product:".length)))
+      .map((k) => env.PRODUCTS_KV.delete(k.name))
   )
 
   return {
