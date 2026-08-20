@@ -17,9 +17,14 @@ export default {
 
     const url = new URL(request.url)
     const slug = (url.searchParams.get("slug") || "").trim()
+    const id = (url.searchParams.get("id") || "").trim()
 
     if (url.pathname === "/sync") {
       return handleManualSync(url, env)
+    }
+
+    if (id) {
+      return handleSingleProductById(env, id)
     }
 
     if (slug) {
@@ -51,6 +56,29 @@ async function handleManualSync(url, env) {
     ok: true,
     message: "products synced",
     ...result
+  })
+}
+
+async function handleSingleProductById(env, id) {
+  const product = await env.PRODUCTS_KV.get(productIdKey(id), "json")
+  const lastUpdated = await env.PRODUCTS_KV.get(PRODUCTS_UPDATED_AT_KEY)
+
+  if (!product) {
+    return json({
+      id,
+      displayText: "Data not available",
+      available: false,
+      priceText: null,
+      lastUpdated
+    })
+  }
+
+  return json({
+    ...product,
+    id,
+    displayText: product.priceText,
+    available: true,
+    lastUpdated
   })
 }
 
@@ -111,12 +139,25 @@ async function syncProducts(env) {
       env.PRODUCTS_KV.put(productKey(product.slug), JSON.stringify(product))
     )
   )
+  await Promise.all(
+    products.map((product) =>
+      env.PRODUCTS_KV.put(productIdKey(product.id), JSON.stringify(product))
+    )
+  )
 
   const currentSlugs = new Set(products.map((p) => p.slug))
   const listed = await env.PRODUCTS_KV.list({ prefix: "product:" })
   await Promise.all(
     listed.keys
       .filter((k) => !currentSlugs.has(k.name.slice("product:".length)))
+      .map((k) => env.PRODUCTS_KV.delete(k.name))
+  )
+
+  const currentIds = new Set(products.map((p) => String(p.id)))
+  const listedIds = await env.PRODUCTS_KV.list({ prefix: "product-id:" })
+  await Promise.all(
+    listedIds.keys
+      .filter((k) => !currentIds.has(k.name.slice("product-id:".length)))
       .map((k) => env.PRODUCTS_KV.delete(k.name))
   )
 
@@ -128,6 +169,10 @@ async function syncProducts(env) {
 
 function productKey(slug) {
   return `product:${slug}`
+}
+
+function productIdKey(id) {
+  return `product-id:${id}`
 }
 
 function formatProduct(product) {
@@ -147,6 +192,7 @@ function formatProduct(product) {
     (prices.currency_suffix || "")
 
   return {
+    id: product.id,
     name: product.name,
     slug: product.slug,
     price: value,
